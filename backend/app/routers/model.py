@@ -20,14 +20,27 @@ STATUSES = ["草稿", "训练完成", "已部署", "已下线"]
 def list_entries(
     keyword: str | None = Query(default=None, description="按模型编号检索"),
     status: str | None = Query(default=None, description="草稿、训练完成、已部署、已下线"),
+    code: str | None = Query(default=None, alias="模型编号", description="按模型编号模糊过滤"),
+    name: str | None = Query(default=None, alias="模型名称", description="按模型名称模糊过滤"),
+    model_type: str | None = Query(default=None, alias="模型类型", description="按模型类型模糊过滤"),
     page: int = 1,
     size: int = 20,
 ) -> PageResult[dict]:
-    """按模型编号与状态过滤分析模型沉淀列表；没有数据时返回空页，不报错。"""
+    """按模型编号、名称、类型与状态过滤分析模型沉淀列表；没有数据时返回空页，不报错。"""
     if size > 200:
         raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
-    items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size)
+    field_filters = {"模型编号": code, "模型名称": name, "模型类型": model_type}
+    items, total = service.list_entries(
+        keyword=keyword, status=status, field_filters=field_filters, page=page, size=size
+    )
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出分析模型沉淀清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "model", "total": total, "items": items}
 
 
 @router.get("/{entry_id}", response_model=dict)
@@ -51,15 +64,8 @@ def create_entry(payload: EntryPayload) -> ActionResult:
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     """对单条模型注册执行部署模型、下线模型、归档模型；不允许的动作会被拦下并说明原因。"""
-    action = str(payload.values.get("action") or "").strip()
+    action = (payload.action or str(payload.values.get("action") or "")).strip()
     entry, message = service.run_action(entry_id, action)
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出分析模型沉淀清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "model", "total": total, "items": items}

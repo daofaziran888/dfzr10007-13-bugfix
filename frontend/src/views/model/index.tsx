@@ -75,8 +75,15 @@ export default function ModelView() {
         method: 'POST',
         body: JSON.stringify({ action }),
       })
+      const payload: { ok?: boolean; message?: string; detail?: string } | null = await response
+        .json()
+        .catch(() => null)
       if (!response.ok) {
-        throw new Error('分析模型沉淀动作未生效，请稍后重试')
+        throw new Error(payload?.detail ?? '分析模型沉淀动作未生效，请稍后重试')
+      }
+      if (payload && payload.ok === false) {
+        setErrorMessage(payload.message ?? '分析模型沉淀动作被拒绝')
+        return
       }
       await reload()
     } catch (error) {
